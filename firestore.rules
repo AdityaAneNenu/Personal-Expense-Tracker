@@ -1,0 +1,11 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // The Express API verifies Firebase ID tokens and enforces ownership and
+    // financial invariants. Its Admin SDK uses IAM; browser database access
+    // would bypass those checks, so it is denied for every collection.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
