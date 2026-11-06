@@ -20,6 +20,7 @@
     "test:client": "npm run test -w client",
     "test:browser": "node scripts/firebase.mjs emulators:exec --project demo-spendwise --only auth,firestore \"node tests/browser.mjs\"",
     "test:production": "node tests/production-smoke.mjs",
+    "test:vercel": "node tests/vercel-smoke.mjs",
     "lint": "eslint .",
     "firebase:check": "node server/scripts/check-firebase.js",
     "emulators": "node scripts/firebase.mjs emulators:start --project demo-spendwise --only auth,firestore",

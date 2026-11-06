@@ -8,10 +8,15 @@ if (process.env.NODE_ENV !== 'test') {
   dotenv.config({ path: fileURLToPath(new URL('../../../.env', import.meta.url)), quiet: true });
 }
 
+const vercel = process.env.VERCEL === '1';
+const deploymentOrigin = vercel && process.env.VERCEL_ENV !== 'development' && process.env.VERCEL_URL
+  ? `https://${process.env.VERCEL_URL}` : undefined;
+
 export const env = {
   nodeEnv: process.env.NODE_ENV || 'development',
+  vercel,
   port: Number(process.env.PORT || 3001),
-  clientOrigin: process.env.CLIENT_ORIGIN || 'http://localhost:5173',
+  clientOrigin: process.env.CLIENT_ORIGIN || deploymentOrigin || 'http://localhost:5173',
   firebase: {
     projectId: process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID || process.env.GCLOUD_PROJECT,
     databaseId: process.env.FIREBASE_DATABASE_ID || '(default)',
@@ -22,6 +27,9 @@ export const env = {
     firestoreEmulator: process.env.FIRESTORE_EMULATOR_HOST,
   },
 };
+// Permit this deployment's exact URL as well as an explicitly configured domain.
+// Never allow arbitrary *.vercel.app origins.
+env.allowedOrigins = [...new Set([env.clientOrigin, deploymentOrigin].filter(Boolean))];
 
 if (!env.firebase.projectId) throw new Error('Set FIREBASE_PROJECT_ID in the root .env file.');
 if (!Number.isInteger(env.port) || env.port < 1 || env.port > 65535) throw new Error('PORT must be a valid TCP port.');

@@ -10,6 +10,8 @@ import { AppError } from './services/errors.js';
 
 const app = express();
 app.disable('x-powered-by');
+// Vercel supplies the client address through its trusted reverse proxy.
+if (env.vercel) app.set('trust proxy', 1);
 app.use(helmet({ crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' }, contentSecurityPolicy: { directives: {
   'script-src': ["'self'", 'https://apis.google.com'],
   'connect-src': ["'self'", 'https://identitytoolkit.googleapis.com', 'https://securetoken.googleapis.com', 'https://*.firebaseapp.com', env.clientOrigin],
@@ -18,7 +20,7 @@ app.use(helmet({ crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' }
   'style-src': ["'self'", "'unsafe-inline'"],
 } } }));
 app.use(cors({ origin(origin, callback) {
-  if (!origin || origin === env.clientOrigin) return callback(null, true);
+  if (!origin || env.allowedOrigins.includes(origin)) return callback(null, true);
   callback(new AppError(403, 'INVALID_ORIGIN', 'This request origin is not allowed.'));
 }, methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'], allowedHeaders: ['Content-Type', 'Authorization'] }));
 app.use('/api/transactions/import', express.json({ limit: '2mb' }));
@@ -27,7 +29,8 @@ app.use('/api', (req, res, next) => { res.set('Cache-Control', 'no-store'); next
 app.get('/api/health', async (req, res) => res.json({ data: await checkFirebase() }));
 app.use('/api', apiRouter, unknownRoute);
 
-if (env.nodeEnv === 'production') {
+// Standalone hosting still serves the SPA; Vercel builds the client separately.
+if (env.nodeEnv === 'production' && !env.vercel) {
   const clientDirectory = fileURLToPath(new URL('../../client/dist/', import.meta.url));
   app.use(express.static(clientDirectory));
   app.get('/{*splat}', (req, res) => res.sendFile(`${clientDirectory}/index.html`));

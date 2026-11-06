@@ -8,6 +8,7 @@ server/.env
 server/.env.test
 .local/
 .firebase/
+.vercel/
 graphify-out/
 .graphify/
 **/.graphify_cache/

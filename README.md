@@ -68,9 +68,9 @@ Open **Transactions → Import from CSV**, or use **Import from CSV** on the Add
 | `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` | Alternative inline server credentials; supply both, preserving escaped newlines |
 | `FIREBASE_DATABASE_ID` | Firestore database, normally `(default)` |
 | `PORT` | Express port, default `3001` |
-| `CLIENT_ORIGIN` | Exact permitted browser origin, default `http://localhost:5173` |
+| `CLIENT_ORIGIN` | Exact permitted browser origin; defaults to the current Vercel deployment URL on Vercel, otherwise `http://localhost:5173` |
 | `API_PROXY_TARGET` | Development API proxy target, default `http://127.0.0.1:3001` |
-| `VITE_API_URL` | API origin for a separately hosted client; leave blank for the included proxy/combined server |
+| `VITE_API_URL` | API origin for a separately hosted client; leave blank for Vercel services or the included proxy/combined server |
 
 `VITE_FIREBASE_*` aliases are supported for the public Firebase fields. Vite explicitly maps only those public fields into the browser; service-account credentials are server-only. On Google Cloud, Application Default Credentials can replace a local JSON file. `.env` and service-account JSON filenames are ignored by Git.
 
@@ -146,6 +146,94 @@ The production smoke test checks the early theme bootstrap, protected APIs, Fire
 `npm run test:firebase` is a separate, explicit live browser smoke check. It creates a temporary account in the configured Firebase project, verifies registration/login and saved expenses/budget alerts, then deletes that exact account and its records. Results are saved to `docs/firebase-live-results.json` without credentials.
 
 ## Production
+
+### Vercel: one project, two services
+
+Import this repository into **one Vercel project**, with its Root Directory set to
+the repository root (not `client` or `server`). The root `vercel.json` builds the
+two npm workspaces independently, using the shared root `package-lock.json`:
+
+- `client` is a static Vite service. It receives `/` and all non-API paths; its
+  service-level rewrite supports extensionless React Router deep links, excluding
+  static files and Vite's development asset paths.
+- `server` is an Express service using the default export from `server/src/app.js`.
+  It receives `/api` and `/api/*`, preserving the `/api` prefix expected by Express.
+  Vercel handles the listener; the API does not serve `client/dist` on Vercel.
+- Both services are public through those top-level rewrites. Existing Firebase
+  bearer-token checks still protect financial endpoints; `/api/health` is public.
+
+There are **no service bindings**: `client` runs in the browser and calls the
+same-origin public `/api`, and `server` calls external Firebase Auth/Firestore.
+Neither service makes a runtime call to another repository service. Vercel
+bindings only resolve in server functions, so putting a binding into `VITE_*`,
+Vite's build, or its local proxy would not work. If a server-side caller is added
+later, declare its binding on that caller and read the injected URL at runtime.
+
+Use the **automatic Vercel deployment URL** for both services. No custom domain
+is needed; the browser calls `/api` on the same origin.
+
+Set these environment variables in Vercel for each deployment environment:
+
+1. The public Firebase web fields from `.env.example` (`FIREBASE_API_KEY`,
+   `FIREBASE_AUTH_DOMAIN`, `FIREBASE_PROJECT_ID`, `FIREBASE_APP_ID`, and the remaining
+   web app fields). They are needed when building the client as well as the API's
+   project ID at runtime.
+2. Server secrets `FIREBASE_CLIENT_EMAIL` and `FIREBASE_PRIVATE_KEY` from the same
+   Firebase service account. The key supports literal `\n` escapes. Leave
+   `FIREBASE_SERVICE_ACCOUNT_PATH` and `GOOGLE_APPLICATION_CREDENTIALS` unset:
+   a local JSON file path is unavailable in Vercel. Never prefix secrets with `VITE_`.
+3. `FIREBASE_DATABASE_ID` if using a named database (default: `(default)`).
+4. Leave `CLIENT_ORIGIN` unset: the API uses Vercel's injected `VERCEL_URL` for
+   the automatic deployment origin, including on previews. Add the generated
+   hostname used for sign-in to Firebase Authentication's authorized domains.
+
+Leave `VITE_API_URL` empty so requests use `/api`. Do not copy local `PORT`,
+`CLIENT_ORIGIN`, `API_PROXY_TARGET`, or emulator settings into production. Vercel
+sets its own system variables; no bound URL variable needs to be configured.
+The public routing configuration supplies the CSP and popup-compatible COOP
+headers previously supplied by Express when serving the combined app. These
+headers exclude loopback hosts so Vite can run its development-only inline React
+refresh preamble locally.
+
+Test the service routing from the repository root with a current Vercel CLI:
+
+```powershell
+npm ci
+# Local development settings; use the root .env for Firebase configuration.
+$env:CLIENT_ORIGIN = 'http://localhost:3000'
+npx vercel@latest dev --local --listen 3000
+```
+
+`vercel dev --local` runs all services without linking or deploying the project.
+Open `http://localhost:3000/login` and a deep link such as `/transactions`; check
+`/api/health` (Firebase connectivity), `/api/transactions` (401 before sign-in),
+and `/api/not-a-route` (JSON 404). Use `vercel dev` without `--local` for a linked
+project with Vercel development environment variables. The existing `npm run dev`
+remains available with Vite's local `/api` proxy.
+
+In another terminal, run `npm run test:vercel -- http://localhost:3000` to verify
+deep links, assets, API errors, CORS, and Firebase health without signing in or
+writing data. The command also accepts a deployed site URL and checks security
+headers there. Conditional header matching needs a deployment check because
+[`vercel dev` does not fully emulate it](https://vercel.com/docs/project-configuration/vercel-json#headers).
+
+On Windows, Vercel CLI 65.12.1's native builder installer may fail with `EPERM`
+while creating symlinks. The bundled JavaScript CLI can run the same service
+configuration without that installer:
+
+```powershell
+npm install --prefix .local/vercel-cli vercel@65.12.1
+node .local/vercel-cli/node_modules/@vercel/cli-support/dist/vc.js dev --local --listen 3000
+```
+
+Keep the local `CLIENT_ORIGIN` setting from the preceding example. `.local/` and
+`.vercel/` are ignored by Git.
+
+References: [Vercel services](https://vercel.com/docs/services),
+[service routing](https://vercel.com/docs/services/routing), and
+[runtime bindings](https://vercel.com/docs/services/bindings).
+
+### Standalone Node server
 
 ```powershell
 npm run build

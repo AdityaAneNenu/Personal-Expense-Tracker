@@ -1,5 +1,7 @@
 import { authErrorMessage, getFirebaseAuth } from './firebase';
 
+// Vercel serves the browser and /api on one origin. Runtime service bindings
+// cannot be read by this static bundle; VITE_API_URL is only for separate hosts.
 const baseUrl = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
 const expiredCodes = new Set(['auth/user-token-expired', 'auth/invalid-user-token', 'auth/user-disabled', 'auth/user-not-found']);
 
